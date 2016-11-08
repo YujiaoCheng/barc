@@ -1,7 +1,7 @@
 #!/usr/bin/env julia
 
 using RobotOS
-@rosimport barc.msg: ECU, pos_info, Encoder, Ultrasound, Logging
+@rosimport barc.msg: ECU, pos_info
 @rosimport data_service.msg: TimeData
 @rosimport geometry_msgs.msg: Vector3
 rostypegen()
@@ -87,11 +87,11 @@ function main()
     # Initialize ROS node and topics
     init_node("mpc_traj")
     loop_rate = Rate(10)
-    pub                         = Publisher("ecu", ECU, queue_size=1)::RobotOS.Publisher{barc.msg.ECU}
+    pub = Publisher("ecu", ECU, queue_size=1)::RobotOS.Publisher{barc.msg.ECU}
     # The subscriber passes arguments (s_start, coeffCurvature and z_est) which are updated by the callback function:
-    s1                          = Subscriber("pos_info", pos_info, SE_callback, (s_start_update,coeffCurvature_update,z_est,x_est,coeffX,coeffY,),queue_size=1)::RobotOS.Subscriber{barc.msg.pos_info}
+    s1 = Subscriber("pos_info", pos_info, SE_callback, (s_start_update,coeffCurvature_update,z_est,x_est,coeffX,coeffY,),queue_size=1)::RobotOS.Subscriber{barc.msg.pos_info}
 
-    run_id          = get_param("run_id")
+    run_id = get_param("run_id")
     println("Finished initialization.")
     # Lap parameters
     switchLap                   = false     # initialize lap lap trigger
@@ -108,7 +108,11 @@ function main()
     lapStatus.currentIt     = 1
     posInfo.s_target        = 12.0#24.0
     k                       = 0                       # overall counter for logging
-    mpcSol.z = zeros(10,4)
+    
+    mpcSol.z = zeros(11,4)
+    mpcSol.u = zeros(10,2)
+    mpcSol.a_x = 0
+    mpcSol.d_f = 0
     
     # Precompile coeffConstraintCost:
     oldTraj.oldTraj[1:buffersize,6,1] = linspace(0,posInfo.s_target,buffersize)
@@ -121,6 +125,8 @@ function main()
     posInfo.s = 0
     posInfo.s_start = 0
 
+    uPrev = zeros(10,2)     # saves the last 10 inputs (1 being the most recent one)
+
     # Start node
     while ! is_shutdown()
         if z_est[6] > 0         # check if data has been received (s > 0)
@@ -128,11 +134,12 @@ function main()
             # ============================= PUBLISH COMMANDS =============================
             # this is done at the beginning of the lap because this makes sure that the command is published 0.1s after the state has been received
             # the state is predicted by 0.1s
+            println("Publishing command...")
             cmd.header.stamp = get_rostime()
             cmd.motor = convert(Float32,mpcSol.a_x)
             cmd.servo = convert(Float32,mpcSol.d_f)
             publish(pub, cmd)        
-
+            println("Finished publishing.")
             # ============================= Initialize iteration parameters =============================
             i                           = lapStatus.currentIt           # current iteration number, just to make notation shorter
             zCurr[i,:]                  = copy(z_est)                   # update state information (actually predicted by Kalman filter!)
@@ -190,12 +197,12 @@ function main()
             else
                 last_u = u_final
             end
-
+            println("Starting solving.")
             # Solve the MPC problem
             tic()
             if lapStatus.currentLap <= 2
                 z_pf = [zCurr[i,6],zCurr[i,5],zCurr[i,4],norm(zCurr[i,1:2])]        # use kinematic model and its states
-                solveMpcProblem_pathFollow(mdl_pF,mpcSol,mpcParams_pF,trackCoeff,posInfo,modelParams,z_pf,last_u')
+                solveMpcProblem_pathFollow(mdl_pF,mpcSol,mpcParams_pF,trackCoeff,posInfo,modelParams,z_pf,last_u',uPrev)
             else                        # otherwise: use system-ID-model
                 solveMpcProblem(mdl,mpcSol,mpcCoeff,mpcParams,trackCoeff,lapStatus,posInfo,modelParams,zCurr[i,:]',last_u')
             end
@@ -205,6 +212,8 @@ function main()
             uCurr[i,:]  = [mpcSol.a_x mpcSol.d_f]
             zCurr[i,6] = (posInfo.s_start + posInfo.s)%posInfo.s_target   # save absolute position in s (for oldTrajectory)
 
+            uPrev = circshift(uPrev,1)
+            uPrev[1,:] = uCurr[i,:]
             println("Finished solving, status: $(mpcSol.solverStatus), u = $(uCurr[i,:]), t = $tt s")
 
             # append new states and inputs to old trajectory

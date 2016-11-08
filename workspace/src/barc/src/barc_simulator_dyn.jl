@@ -61,7 +61,7 @@ function main()
     buffersize = 60000
     gps_meas = Measurements{Float64}(1,zeros(buffersize),zeros(buffersize),zeros(buffersize,2))
     imu_meas = Measurements{Float64}(1,zeros(buffersize),zeros(buffersize),zeros(buffersize,2))
-    cmd_log  = Measurements{Float64}(1,zeros(buffersize),zeros(buffersize),zeros(buffersize,2))
+    cmd_log  = Measurements{Float64}(1,ones(buffersize)*Inf,ones(buffersize)*Inf,zeros(buffersize,2))
     z_real   = Measurements{Float64}(1,zeros(buffersize),zeros(buffersize),zeros(buffersize,8))
     slip_a   = Measurements{Float64}(1,zeros(buffersize),zeros(buffersize),zeros(buffersize,2))
 
@@ -119,10 +119,13 @@ function main()
 
     gps_header = Header()
     while ! is_shutdown()
-        # update current state with a new row vector
-        z_current[i,:],slip_ang[i,:]  = simDynModel_exact_xy(z_current[i-1,:],u_current', dt, modelParams)
         t_ros   = get_rostime()
         t       = to_sec(t_ros)
+        if sizeof(cmd_log.z[t.>cmd_log.t+0.2,2]) >= 1
+           u_current[2] = cmd_log.z[t.>cmd_log.t+0.2,2][end]       # artificial steering input delay
+        end
+        # update current state with a new row vector
+        z_current[i,:],slip_ang[i,:]  = simDynModel_exact_xy(z_current[i-1,:], u_current', dt, modelParams)
 
         z_real.t_msg[i] = t
         z_real.t[i]     = t
@@ -141,8 +144,8 @@ function main()
             imu_data.orientation = geometry_msgs.msg.Quaternion(cos(yaw/2), sin(yaw/2), 0, 0)
             imu_data.angular_velocity = Vector3(0,0,psiDot)
             imu_data.header.stamp = t_ros
-            imu_data.linear_acceleration.x = diff(z_current[i-1:i,3])[1]/dt
-            imu_data.linear_acceleration.y = diff(z_current[i-1:i,4])[1]/dt
+            imu_data.linear_acceleration.x = diff(z_current[i-1:i,3])[1]/dt - z_current[i,6]*z_current[i,4] + randn()*0.5
+            imu_data.linear_acceleration.y = diff(z_current[i-1:i,4])[1]/dt + z_current[i,6]*z_current[i,3] + randn()*0.5
             publish(pub_imu, imu_data)      # Imu format is defined by ROS, you can look it up by google "rosmsg Imu"
                                             # It's sufficient to only fill the orientation part of the Imu-type (with one quaternion)
         end
@@ -150,9 +153,13 @@ function main()
         # Velocity measurements
         dist_traveled += norm(diff(z_current[i-1:i,1:2]))
         if i%5 == 0                 # 20 Hz
-            if sum(dist_traveled .>= vel_dist_update)>=1     # only update if at least one of the magnets has passed the sensor
+            if sum(dist_traveled .>= vel_dist_update)>=1 && z_current[i,3] > 0.1     # only update if at least one of the magnets has passed the sensor
                 dist_traveled[dist_traveled.>=vel_dist_update] = 0
                 vel_est.vel_est = convert(Float32,norm(z_current[i,3:4]))#+0.00*randn())
+                vel_est.vel_fl = convert(Float32,0)
+                vel_est.vel_fr = convert(Float32,0)
+                vel_est.vel_bl = convert(Float32,0)
+                vel_est.vel_br = convert(Float32,0)
             end
             vel_est.header.stamp = t_ros
             publish(pub_vel, vel_est)
