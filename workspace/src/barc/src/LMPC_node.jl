@@ -22,7 +22,7 @@ include("barc_lib/simModel.jl")
 
 # This function is called whenever a new state estimate is received.
 # It saves this estimate in oldTraj and uses it in the MPC formulation (see in main)
-function SE_callback(msg::pos_info,lapStatus::LapStatus,posInfo::PosInfo,mpcSol::MpcSol,oldTraj::OldTrajectory,trackCoeff::TrackCoeff,z_est::Array{Float32,1},x_est::Array{Float32,1})         # update current position and track data
+function SE_callback(msg::pos_info,lapStatus::LapStatus,posInfo::PosInfo,mpcSol::MpcSol,oldTraj::OldTrajectory,trackCoeff::TrackCoeff,z_est::Array{Float64,1},x_est::Array{Float64,1})         # update current position and track data
     # update mpc initial condition
     z_est[:]                  = [msg.v_x,msg.v_y,msg.psiDot,msg.epsi,msg.ey,msg.s]             # use z_est as pointer
     x_est[:]                  = [msg.x,msg.y,msg.psi,msg.v]
@@ -179,8 +179,8 @@ function main()
             # This guarantees a constant publishing frequency of 10 Hz
             # (The state can be predicted by 0.1s)
             cmd.header.stamp = get_rostime()
-            # cmd.motor = convert(Float32,mpcSol.a_x)
-            # cmd.servo = convert(Float32,mpcSol.d_f)
+            # cmd.motor = convert(Float64,mpcSol.a_x)
+            # cmd.servo = convert(Float64,mpcSol.d_f)
             # publish(pub, cmd)
             # ============================= Initialize iteration parameters =============================
             i                           = lapStatus.currentIt           # current iteration number, just to make notation shorter
@@ -256,8 +256,8 @@ function main()
             #end
 
             #cmd.header.stamp = get_rostime()
-            cmd.motor = convert(Float32,mpcSol.a_x)
-            cmd.servo = convert(Float32,mpcSol.d_f)
+            cmd.motor = mpcSol.a_x
+            cmd.servo = mpcSol.d_f
             publish(pub, cmd)
 
             # Write current input information
