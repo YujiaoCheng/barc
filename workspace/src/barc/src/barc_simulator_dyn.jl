@@ -34,9 +34,9 @@ include("barc_lib/simModel.jl")
 
 # This type contains measurement data (time, values and a counter)
 type Measurements{T}
-    i::Int64          # measurement counter
-    t::Array{Float64}       # time data
-    t_msg::Array{Float64}
+    i::Int32          # measurement counter
+    t::Array{Float32}       # time data
+    t_msg::Array{Float32}
     z::Array{T}       # measurement values
 end
 
@@ -47,8 +47,8 @@ function clean_up(m::Measurements)
     m.z     = m.z[1:m.i-1,:]
 end
 
-function ECU_callback(msg::ECU,u_current::Array{Float64},cmd_log::Measurements)
-    u_current[:] = convert(Array{Float64,1},[msg.motor, msg.servo])
+function ECU_callback(msg::ECU,u_current::Array{Float32},cmd_log::Measurements)
+    u_current[:] = convert(Array{Float32,1},[msg.motor, msg.servo])
     cmd_log.t_msg[cmd_log.i]    = to_sec(get_rostime())
     cmd_log.t[cmd_log.i]        = to_sec(get_rostime())
     cmd_log.z[cmd_log.i,:]      = u_current
@@ -56,14 +56,14 @@ function ECU_callback(msg::ECU,u_current::Array{Float64},cmd_log::Measurements)
 end
 
 function main() 
-    u_current = zeros(Float64,2)      # msg ECU is Float32 !
+    u_current = zeros(Float32,2)      # msg ECU is Float32 !
 
     buffersize = 60000
-    gps_meas = Measurements{Float64}(1,zeros(buffersize),zeros(buffersize),zeros(buffersize,2))
-    imu_meas = Measurements{Float64}(1,zeros(buffersize),zeros(buffersize),zeros(buffersize,2))
-    cmd_log  = Measurements{Float64}(1,ones(buffersize)*Inf,ones(buffersize)*Inf,zeros(buffersize,2))
-    z_real   = Measurements{Float64}(1,zeros(buffersize),zeros(buffersize),zeros(buffersize,8))
-    slip_a   = Measurements{Float64}(1,zeros(buffersize),zeros(buffersize),zeros(buffersize,2))
+    gps_meas = Measurements{Float32}(1,zeros(buffersize),zeros(buffersize),zeros(buffersize,2))
+    imu_meas = Measurements{Float32}(1,zeros(buffersize),zeros(buffersize),zeros(buffersize,2))
+    cmd_log  = Measurements{Float32}(1,ones(buffersize)*Inf,ones(buffersize)*Inf,zeros(buffersize,2))
+    z_real   = Measurements{Float32}(1,zeros(buffersize),zeros(buffersize),zeros(buffersize,8))
+    slip_a   = Measurements{Float32}(1,zeros(buffersize),zeros(buffersize),zeros(buffersize,2))
 
     # initiate node, set up publisher / subscriber topics
     init_node("barc_sim")
