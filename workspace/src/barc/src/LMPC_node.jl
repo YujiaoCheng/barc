@@ -181,7 +181,7 @@ function main()
             cmd.header.stamp = get_rostime()
             # cmd.motor = convert(Float64,mpcSol.a_x)
             # cmd.servo = convert(Float64,mpcSol.d_f)
-            # publish(pub, cmd)
+            publish(pub, cmd)
             # ============================= Initialize iteration parameters =============================
             i                           = lapStatus.currentIt           # current iteration number, just to make notation shorter
             zCurr[i,:]                  = copy(z_est)                   # update state information
@@ -258,7 +258,7 @@ function main()
             #cmd.header.stamp = get_rostime()
             cmd.motor = mpcSol.a_x
             cmd.servo = mpcSol.d_f
-            publish(pub, cmd)
+            #publish(pub, cmd)
 
             # Write current input information
             uCurr[i,:] = [mpcSol.a_x mpcSol.d_f]
